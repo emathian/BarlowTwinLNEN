@@ -1,0 +1,15 @@
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/training_ac_0_all_list.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/dev_barlow_twins.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/dev_barlow_twins.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/dev_barlow_twins.txt
+/linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/dev_barlow_twins.txt
+{"epoch": 0, "step": 0, "lr_weights": 0.0, "lr_biases": 0.0, "loss": 18199.6484375, "time": 1}
