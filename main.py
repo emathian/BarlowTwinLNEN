@@ -22,6 +22,7 @@ from torch import nn, optim
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import numpy as np
 
 parser = argparse.ArgumentParser(description='Barlow Twins Training')
 parser.add_argument('--epochs', default=1000, type=int, metavar='N',
@@ -36,39 +37,25 @@ parser.add_argument('--weight-decay', default=1e-6, type=float, metavar='W',
                     help='weight decay')
 parser.add_argument('--lambd', default=0.0051, type=float, metavar='L',
                     help='weight on off-diagonal terms')
-parser.add_argument('--projector', default='8192-8192-8192', type=str,
+parser.add_argument('--projector', default='1024-512-256-128', type=str,
                     metavar='MLP', help='projector MLP')
-parser.add_argument('--print-freq', default=100, type=int, metavar='N',
+parser.add_argument('--print-freq', default=10, type=int, metavar='N',
                     help='print frequency')
-parser.add_argument('--checkpoint-dir', default='/gpfsscratch/rech/uli/ueu39kt/barlowtwins/dev/', type=Path,
+parser.add_argument('--save-freq', default=10, type=int, metavar='N',
+                    help='save frequency')
+parser.add_argument('--checkpoint-dir', default='/gpfsscratch/rech/uli/ueu39kt/barlowtwins/dev_nshape/', type=Path,
                     metavar='DIR', help='path to checkpoint directory')
 parser.add_argument('--list-dir',  default='TrainTumorNormal.txt', type=str, metavar='C',
                         help='List of files for LNEN dataset')
-
-
-# def main():
-# All include below for a parallelization on Jean Zay
-#     args = parser.parse_args()
-#     args.ngpus_per_node = torch.cuda.device_count()
-#     if 'SLURM_JOB_ID' in os.environ:
-#         # single-node and multi-node distributed training on SLURM cluster
-#         # requeue job on SLURM preemption
-#         signal.signal(signal.SIGUSR1, handle_sigusr1)
-#         signal.signal(signal.SIGTERM, handle_sigterm)
-#         # find a common host name on all nodes
-#         # assume scontrol returns hosts in the same order on all nodes
-#         cmd = 'scontrol show hostnames ' + os.getenv('SLURM_JOB_NODELIST')
-#         stdout = subprocess.check_output(cmd.split())
-#         host_name = stdout.decode().splitlines()[0]
-#         args.rank = int(os.getenv('SLURM_NODEID')) * args.ngpus_per_node
-#         args.world_size = int(os.getenv('SLURM_NNODES')) * args.ngpus_per_node
-#         args.dist_url = f'tcp://{host_name}:58472'
-#     else:
-#         # single-node distributed training
-#         args.rank = 0
-#         args.dist_url = 'tcp://localhost:58472'
-#         args.world_size = args.ngpus_per_node
-#     torch.multiprocessing.spawn(main_worker, (args,), args.ngpus_per_node)
+###############
+# Evaluation 
+###############
+parser.add_argument('--evaluate', action='store_true', default=False,
+                        help='Parallelize the training on the data set')
+parser.add_argument('--checkpoint_evaluation', default='/gpfsscratch/rech/uli/ueu39kt/barlowtwins/train_tiles_harsh_dataaug_z128/checkpoint_30000.pth', type=Path,
+                    metavar='DIR', help='path to checkpoint to evaluate')
+parser.add_argument('--projector-dir', default='/gpfsscratch/rech/uli/ueu39kt/barlowtwins/projectors/train_tiles_harsh_dataaug_z128', type=Path,
+                    metavar='DIR', help='path to where projectors will be saved')
 
 
 def main():
@@ -95,7 +82,7 @@ def main():
     
     if idr_torch_rank == 0:
         args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        stats_file = open(args.checkpoint_dir / 'stats.txt', 'a', buffering=1)
+        stats_file = open(args.checkpoint_dir / 'stats_eval.txt', 'a', buffering=1)
         print(' '.join(sys.argv))
         print(' '.join(sys.argv), file=stats_file)
 
@@ -127,8 +114,9 @@ def main():
         optimizer.load_state_dict(ckpt['optimizer'])
     else:
         start_epoch = 0
-
-    dataset = LNENDataset(args, Transform())
+    
+    dataset = LNENDataset(args)
+    print('Load LNEN data')
     sampler = torch.utils.data.distributed.DistributedSampler(dataset)
     assert args.batch_size % idr_world_size == 0
     per_device_batch_size = args.batch_size // idr_world_size
@@ -159,15 +147,95 @@ def main():
                                  time=int(time.time() - start_time))
                     print(json.dumps(stats))
                     print(json.dumps(stats), file=stats_file)
-        if idr_torch_rank == 0:
-            # save checkpoint
-            state = dict(epoch=epoch + 1, model=model.state_dict(),
-                         optimizer=optimizer.state_dict())
-            torch.save(state, args.checkpoint_dir / 'checkpoint.pth')
+            if idr_torch_rank == 0 and step % args.save_freq == 0:
+                # save checkpoint
+                state = dict(epoch=epoch + 1, model=model.state_dict(),
+                             optimizer=optimizer.state_dict())
+                torch.save(state, args.checkpoint_dir / f'checkpoint_{epoch}_{step}.pth')
+                torch.save(model.module.backbone.state_dict(),
+                       args.checkpoint_dir / f'wide_resnet50_{epoch}_{step}.pth')
     if idr_torch_rank == 0:
         # save final model
         torch.save(model.module.backbone.state_dict(),
-                   args.checkpoint_dir / 'wide_resnet50.pth')
+                   args.checkpoint_dir / 'wide_resnet50_final.pth')
+        
+def evaluate():
+    args = parser.parse_args()
+    idr_torch_rank = int(os.environ['SLURM_PROCID'])
+    local_rank = int(os.environ['SLURM_LOCALID'])
+    idr_world_size = int(os.environ['SLURM_NTASKS'])
+    cpus_per_task = int(os.environ['SLURM_CPUS_PER_TASK'])
+    torch.backends.cudnn.enabled = False
+
+    # get node list from slurm
+    hostnames = hostlist.expand_hostlist(os.environ['SLURM_JOB_NODELIST'])
+    gpu_ids = os.environ['SLURM_STEP_GPUS'].split(",")
+    # define MASTER_ADD & MASTER_PORT
+    os.environ['MASTER_ADDR'] = hostnames[0]
+    os.environ['MASTER_PORT'] = str(12456 + int(min(gpu_ids))); #Avoid port conflits in the node #str(12345 + gpu_ids)
+    
+    dist.init_process_group(backend='nccl', 
+                            init_method='env://', 
+                            world_size=idr_world_size, 
+                            rank=idr_torch_rank)
+    if idr_torch_rank == 0:
+        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        stats_file = open(args.checkpoint_dir / 'stats.txt', 'a', buffering=1)
+        print(' '.join(sys.argv))
+        print(' '.join(sys.argv), file=stats_file)
+    
+    torch.cuda.set_device(local_rank)    
+    torch.backends.cudnn.benchmark = True
+    gpu = torch.device("cuda")
+
+    model = BarlowTwins(args).cuda(gpu)
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    param_weights = []
+    param_biases = []
+    for param in model.parameters():
+        if param.ndim == 1:
+            param_biases.append(param)
+        else:
+            param_weights.append(param)
+    parameters = [{'params': param_weights}, {'params': param_biases}]
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
+    optimizer = LARS(parameters, lr=0, weight_decay=args.weight_decay,
+                     weight_decay_filter=True,
+                     lars_adaptation_filter=True)
+
+    ckpt = torch.load(args.checkpoint_evaluation ,
+                          map_location='cpu')
+    optimizer.load_state_dict(ckpt['optimizer'])
+    
+    dataset = LNENDataset(args)
+    print('Load LNEN data')
+    sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+    assert args.batch_size % idr_world_size == 0
+    per_device_batch_size = args.batch_size // idr_world_size
+    loader = torch.utils.data.DataLoader(
+        dataset, batch_size=per_device_batch_size, num_workers=0,
+        pin_memory=True, sampler=sampler)
+
+
+    scaler = torch.cuda.amp.GradScaler()
+    with torch.no_grad():
+        for step, (y1, y2, path_to_imgs) in enumerate(loader):
+            y1 = y1.cuda(gpu, non_blocking=True)
+            y2 = y2.cuda(gpu, non_blocking=True)
+            z1, z2, loss = model.forward(y1, y2)
+            if idr_torch_rank == 0:
+                write_projectors(args, z1, path_to_imgs)
+            
+def write_projectors(args, z1, path_to_imgs):
+    os.makedirs(os.path.join(args.projector_dir), exist_ok= True)   
+    for i in range(len(path_to_imgs)):
+        tne_id = path_to_imgs[i].split('/')[-3]
+        os.makedirs(os.path.join(args.projector_dir, tne_id), exist_ok= True)
+        img_name = path_to_imgs[i].split('/')[-1]
+        z1_c = z1[i].squeeze().detach().cpu().numpy()
+        np.save(os.path.join(args.projector_dir,tne_id,  img_name.split('.')[0]), 
+                z1_c)
+        
 
 
 def adjust_learning_rate(args, optimizer, loader, step):
@@ -224,12 +292,10 @@ class BarlowTwins(nn.Module):
 
     def forward(self, y1, y2):
         testy = self.backbone(y1)
-        print(testy.shape)
         z1 = self.projector(self.backbone(y1))
         z2 = self.projector(self.backbone(y2))
-        print('z1 ' , z1.shape)
         # empirical cross-correlation matrix
-        c = self.bn(z1).T @ self.bn(z2)
+        c = self.bn(z1).T @ self.bn(z2)#
 
         # sum the cross-correlation matrix between all gpus
         c.div_(self.args.batch_size)
@@ -238,7 +304,10 @@ class BarlowTwins(nn.Module):
         on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
         off_diag = off_diagonal(c).pow_(2).sum()
         loss = on_diag + self.args.lambd * off_diag
-        return loss
+        if not args.evaluate:
+            return loss
+        else:
+            return z1, z2, loss
 
 
 class LARS(optim.Optimizer):
@@ -310,11 +379,11 @@ class Solarization(object):
 class Transform:
     def __init__(self):
         self.transform = transforms.Compose([
-            transforms.RandomResizedCrop(224, interpolation=Image.BICUBIC),
+            transforms.RandomResizedCrop(384, interpolation=Image.BICUBIC),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply(
-                [transforms.ColorJitter(brightness=0.25, contrast=0.25,
-                                        saturation=0.1, hue=0.07)],
+                [transforms.ColorJitter(brightness=0.4, contrast=0.4,
+                                        saturation=0.2, hue=0.5)],
                 p=0.8
             ),
             transforms.RandomGrayscale(p=0.2), # like in JLQ
@@ -325,11 +394,11 @@ class Transform:
                                  std=[0.229, 0.224, 0.225])
         ])
         self.transform_prime = transforms.Compose([
-            transforms.RandomResizedCrop(224, interpolation=Image.BICUBIC),
+            transforms.RandomResizedCrop(384, interpolation=Image.BICUBIC),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply(
                 [transforms.ColorJitter(brightness=0.4, contrast=0.4,
-                                        saturation=0.2, hue=0.1)],
+                                        saturation=0.2, hue=0.5)],
                 p=0.8
             ),
             transforms.RandomGrayscale(p=0.2),
@@ -344,20 +413,41 @@ class Transform:
         y1 = self.transform(x)
         y2 = self.transform_prime(x)
         return y1, y2
+    
+class Transform_Evaluation:
+    def __init__(self):
+        self.transform = transforms.Compose([
+            transforms.Resize(384, interpolation=Image.BICUBIC),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+        ])
+    def __call__(self, x):
+        y1 = self.transform(x)
+        y2 = self.transform(x)
+        return y1, y2
 
 class LNENDataset(Dataset):
     def __init__(self, args, is_train=True):
         self.list_file = args.list_dir
+        self.evaluate = args.evaluate
         # load dataset
         self.x = self.load_dataset_folder()
         # set transforms
-        self.transform = Transform()
+        if not args.evaluate:
+            self.transform = Transform()
+        else:
+            self.transform = Transform_Evaluation()
 
     def __getitem__(self, idx):
-        x = self.x[idx]
-        x = Image.open(x)
+        paths = self.x[idx]
+        x = Image.open(paths)
         x1, x2 = self.transform(x)
-        return x1, x2
+        if not args.evaluate:
+            return x1, x2
+        else:
+            return x1, x2, paths
+
 
     def __len__(self):
         return len(self.x)
@@ -378,4 +468,8 @@ class LNENDataset(Dataset):
 
 
 if __name__ == '__main__':
-    main()
+    args = parser.parse_args()
+    if args.evaluate:
+        evaluate()
+    else:
+        main()
