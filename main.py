@@ -202,24 +202,28 @@ def evaluate():
     optimizer = LARS(parameters, lr=0, weight_decay=args.weight_decay,
                      weight_decay_filter=True,
                      lars_adaptation_filter=True)
-
+    print("args.checkpoint_evaluation  ", args.checkpoint_evaluation)
     ckpt = torch.load(args.checkpoint_evaluation ,
                           map_location='cpu')
     optimizer.load_state_dict(ckpt['optimizer'])
     
     dataset = LNENDataset(args)
     print('Load LNEN data')
-    sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+    sampler = torch.utils.data.distributed.DistributedSampler(dataset, shuffle=False)
     assert args.batch_size % idr_world_size == 0
     per_device_batch_size = args.batch_size // idr_world_size
     loader = torch.utils.data.DataLoader(
         dataset, batch_size=per_device_batch_size, num_workers=0,
-        pin_memory=True, sampler=sampler)
+        pin_memory=True, sampler=None)
 
-
+    print('Len loader ', len(loader))
     scaler = torch.cuda.amp.GradScaler()
     with torch.no_grad():
         for step, (y1, y2, path_to_imgs) in enumerate(loader):
+            if step % 100 == 0:
+                if idr_torch_rank == 0:
+                    print('step ', step, 
+                      '\n progression ' , (step ) /  len(loader))
             y1 = y1.cuda(gpu, non_blocking=True)
             y2 = y2.cuda(gpu, non_blocking=True)
             z1, z2, loss = model.forward(y1, y2)
@@ -233,7 +237,7 @@ def write_projectors(args, z1, path_to_imgs):
         os.makedirs(os.path.join(args.projector_dir, tne_id), exist_ok= True)
         img_name = path_to_imgs[i].split('/')[-1]
         z1_c = z1[i].squeeze().detach().cpu().numpy()
-        np.save(os.path.join(args.projector_dir,tne_id,  img_name.split('.')[0]), 
+        np.save(os.path.join(args.projector_dir,tne_id,  img_name.split('.jpg')[0]), 
                 z1_c)
         
 

@@ -15,5 +15,5 @@
 
 
 module load pytorch-gpu/py3/1.9.0
-mkdir /gpfsscratch/rech/uli/ueu39kt/barlowtwins/train_tiles_harsh_dataaug_z128_p13
-srun python /linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --evaluate --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/infer_train_tiles_clustering.txt --projector 1024-512-256-128 --checkpoint_evaluation /gpfsscratch/rech/uli/ueu39kt/barlowtwins/train_tiles_harsh_dataaug_z128/checkpoint_40000.pth --projector-dir /gpfsscratch/rech/uli/ueu39kt/barlowtwins/projectors/train_tiles_harsh_dataaug_z128_p13
+mkdir /gpfsscratch/rech/uli/ueu39kt/barlowtwins/train_tiles_harsh_dataaug_z128_p13_0712
+srun python /linkhome/rech/genkmw01/ueu39kt/barlowtwins/main.py --evaluate --list-dir /gpfsscratch/rech/uli/ueu39kt/Tiles_HE_all_samples_384_384_Vahadane_2/infer_train_tiles_clustering.txt --projector 1024-512-256-128 --checkpoint_evaluation /gpfsscratch/rech/uli/ueu39kt/barlowtwins/train_tiles_harsh_dataaug_z128/checkpoint_40000.pth --projector-dir /gpfsscratch/rech/uli/ueu39kt/barlowtwins/projectors/train_tiles_harsh_dataaug_z128_p13_0712
